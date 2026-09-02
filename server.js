@@ -67,7 +67,6 @@ app.post('/render/tgs', async (req, res) => {
 
     await browser.close();
 
-    // Safety net (should rarely trigger now, kept just in case)
     let finalFrames = frames;
     if (frames.length > 1) {
       const first = frames[0];
@@ -78,7 +77,7 @@ app.post('/render/tgs', async (req, res) => {
       }
     }
 
-    res.json({ frames: finalFrames, width: 512, height: 512 });
+    res.json({ frames: finalFrames, width: 512, height: 512, fr: lottieData.fr });
   } catch (err) {
     if (browser) await browser.close();
     res.status(500).json({ error: err.message });
