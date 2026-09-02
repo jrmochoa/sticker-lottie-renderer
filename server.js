@@ -9,8 +9,6 @@ const { execSync } = require('child_process');
 const app = express();
 app.use(express.raw({ type: '*/*', limit: '10mb' }));
 
-const MAX_FRAMES = 12;
-
 const LAUNCH_OPTS = {
   headless: 'new',
   executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -79,8 +77,6 @@ app.post('/render/tgs', async (req, res) => {
 
     await browser.close();
 
-    // Safety check: if rendering still failed to vary at all (start/mid/end identical),
-    // collapse to a single accurate costume instead of shipping a fake "animation".
     let finalFrames = frames;
     if (frames.length > 1) {
       const first = frames[0];
@@ -165,17 +161,21 @@ app.post('/render/webm', async (req, res) => {
   const inputPath = path.join(tmpDir, 'input.webm');
   try {
     fs.writeFileSync(inputPath, req.body);
-    const probeOut = execSync(
-      `ffprobe -v error -show_entries format=duration -of csv=p=0 ${inputPath}`
+
+    const fpsOut = execSync(
+      `ffprobe -v error -select_streams v:0 -show_entries stream=r_frame_rate -of csv=p=0 ${inputPath}`
     ).toString().trim();
-    const duration = parseFloat(probeOut) || 3;
-    const fps = Math.max(1, MAX_FRAMES / duration);
+    const [num, den] = fpsOut.split('/').map(Number);
+    const nativeFps = den ? num / den : 30;
+
     execSync(
-      `ffmpeg -i ${inputPath} -vf fps=${fps} -vframes ${MAX_FRAMES} ${tmpDir}/frame_%03d.png`
+      `ffmpeg -i ${inputPath} -vf fps=${nativeFps} -vsync 0 ${tmpDir}/frame_%04d.png`
     );
+
     const files = fs.readdirSync(tmpDir).filter(f => f.startsWith('frame_')).sort();
     const frames = files.map(f => fs.readFileSync(path.join(tmpDir, f)).toString('base64'));
-    res.json({ frames, width: 512, height: 512 });
+
+    res.json({ frames, width: 512, height: 512, fps: nativeFps });
   } catch (err) {
     res.status(500).json({ error: err.message });
   } finally {
