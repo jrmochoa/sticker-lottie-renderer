@@ -9,9 +9,8 @@ const { execSync } = require('child_process');
 const app = express();
 app.use(express.raw({ type: '*/*', limit: '10mb' }));
 
-const MAX_FRAMES = 12; // still used by webm route for now
+const MAX_FRAMES = 12;
 
-// ---------- TGS (Lottie) rendering ----------
 app.post('/render/tgs', async (req, res) => {
   let browser;
   try {
@@ -63,26 +62,78 @@ app.post('/render/tgs', async (req, res) => {
   }
 });
 
-// ---------- WEBM (video) frame extraction ----------
+app.post('/debug/tgs-frames', async (req, res) => {
+  let browser;
+  try {
+    const tgsBytes = req.body;
+    const lottieJson = zlib.gunzipSync(tgsBytes).toString('utf8');
+    const lottieData = JSON.parse(lottieJson);
+
+    browser = await puppeteer.launch({
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+      args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
+    const page = await browser.newPage();
+    await page.setViewport({ width: 512, height: 512 });
+
+    const html = `
+      <html><body style="margin:0;background:transparent;">
+      <div id="anim" style="width:512px;height:512px;"></div>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+      <script>
+        window.anim = lottie.loadAnimation({
+          container: document.getElementById('anim'),
+          renderer: 'canvas',
+          loop: false,
+          autoplay: false,
+          animationData: ${lottieJson}
+        });
+      </script>
+      </body></html>
+    `;
+    await page.setContent(html);
+    await page.waitForFunction(() => window.anim && window.anim.isLoaded);
+
+    const report = [];
+    const testFrames = [lottieData.ip, lottieData.ip + 10, lottieData.ip + 30, lottieData.op];
+    for (const f of testFrames) {
+      await page.evaluate((frame) => window.anim.goToAndStop(frame, true), f);
+      await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 100)));
+      const info = await page.evaluate(() => {
+        const canvas = document.querySelector('#anim canvas');
+        return {
+          actualCurrentFrame: window.anim.currentFrame,
+          canvasExists: !!canvas,
+          canvasSize: canvas ? canvas.width + 'x' + canvas.height : null,
+          dataUrlLength: canvas ? canvas.toDataURL('image/png').length : 0
+        };
+      });
+      report.push({ requestedFrame: f, ...info });
+    }
+
+    await browser.close();
+    res.json({ report });
+  } catch (err) {
+    if (browser) await browser.close();
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/render/webm', async (req, res) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'webm-'));
   const inputPath = path.join(tmpDir, 'input.webm');
   try {
     fs.writeFileSync(inputPath, req.body);
-
     const probeOut = execSync(
       `ffprobe -v error -show_entries format=duration -of csv=p=0 ${inputPath}`
     ).toString().trim();
     const duration = parseFloat(probeOut) || 3;
     const fps = Math.max(1, MAX_FRAMES / duration);
-
     execSync(
       `ffmpeg -i ${inputPath} -vf fps=${fps} -vframes ${MAX_FRAMES} ${tmpDir}/frame_%03d.png`
     );
-
     const files = fs.readdirSync(tmpDir).filter(f => f.startsWith('frame_')).sort();
     const frames = files.map(f => fs.readFileSync(path.join(tmpDir, f)).toString('base64'));
-
     res.json({ frames, width: 512, height: 512 });
   } catch (err) {
     res.status(500).json({ error: err.message });
