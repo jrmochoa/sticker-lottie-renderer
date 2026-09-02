@@ -21,19 +21,13 @@ const LAUNCH_OPTS = {
   ]
 };
 
-async function captureFrame(page, frameNum, previousDataUrl) {
-  await page.evaluate((f) => window.anim.goToAndStop(f, true), frameNum);
-
-  let dataUrl = null;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    await page.evaluate((ms) => new Promise(resolve => setTimeout(resolve, ms)), 100);
-    dataUrl = await page.evaluate(() => {
-      const canvas = document.querySelector('#anim canvas');
-      return canvas ? canvas.toDataURL('image/png') : null;
-    });
-    if (dataUrl !== previousDataUrl) break;
-  }
-  return dataUrl;
+async function captureFrame(page, frameNum) {
+  return await page.evaluate((f) => {
+    window.anim.currentFrame = f;
+    window.anim.renderer.renderFrame(f);
+    const canvas = document.querySelector('#anim canvas');
+    return canvas ? canvas.toDataURL('image/png') : null;
+  }, frameNum);
 }
 
 app.post('/render/tgs', async (req, res) => {
@@ -66,17 +60,14 @@ app.post('/render/tgs', async (req, res) => {
     await page.waitForFunction(() => window.anim && window.anim.isLoaded);
 
     const frames = [];
-    let previousDataUrl = null;
     for (let f = lottieData.ip; f <= lottieData.op; f += 1) {
-      const dataUrl = await captureFrame(page, f, previousDataUrl);
-      if (dataUrl) {
-        frames.push(dataUrl.split(',')[1]);
-        previousDataUrl = dataUrl;
-      }
+      const dataUrl = await captureFrame(page, f);
+      if (dataUrl) frames.push(dataUrl.split(',')[1]);
     }
 
     await browser.close();
 
+    // Safety net (should rarely trigger now, kept just in case)
     let finalFrames = frames;
     if (frames.length > 1) {
       const first = frames[0];
