@@ -19,8 +19,11 @@ app.post('/render/tgs', async (req, res) => {
     const lottieJson = zlib.gunzipSync(tgsBytes).toString('utf8');
     const lottieData = JSON.parse(lottieJson);
 
-    const totalFrames = lottieData.op - lottieData.ip;
-    const frameStep = Math.max(1, Math.floor(totalFrames / MAX_FRAMES));
+    const totalFrames = Math.round(lottieData.op - lottieData.ip);
+    const SAFETY_CEILING = 40;
+    const frameStep = totalFrames > SAFETY_CEILING
+      ? Math.ceil(totalFrames / SAFETY_CEILING)
+      : 1;
 
     browser = await puppeteer.launch({
       executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
@@ -53,7 +56,6 @@ app.post('/render/tgs', async (req, res) => {
       const el = await page.$('#anim');
       const shot = await el.screenshot({ type: 'png' });
       frames.push(shot.toString('base64'));
-      if (frames.length >= MAX_FRAMES) break;
     }
 
     await browser.close();
