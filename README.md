@@ -1,0 +1,1 @@
+# sticker-lottie-renderer
