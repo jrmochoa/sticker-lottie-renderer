@@ -9,7 +9,7 @@ const { execSync } = require('child_process');
 const app = express();
 app.use(express.raw({ type: '*/*', limit: '10mb' }));
 
-const MAX_FRAMES = 12; // cap frame count to keep sprite3 reasonable
+const MAX_FRAMES = 12; // still used by webm route for now
 
 // ---------- TGS (Lottie) rendering ----------
 app.post('/render/tgs', async (req, res) => {
@@ -73,7 +73,6 @@ app.post('/render/webm', async (req, res) => {
   try {
     fs.writeFileSync(inputPath, req.body);
 
-    // Get duration to compute sample interval
     const probeOut = execSync(
       `ffprobe -v error -show_entries format=duration -of csv=p=0 ${inputPath}`
     ).toString().trim();
