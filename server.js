@@ -37,7 +37,7 @@ app.post('/render/tgs', async (req, res) => {
     const html = `
       <html><body style="margin:0;background:transparent;">
       <div id="anim" style="width:512px;height:512px;"></div>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.13.0/lottie.min.js"></script>
       <script>
         window.anim = lottie.loadAnimation({
           container: document.getElementById('anim'),
@@ -98,7 +98,7 @@ app.post('/debug/tgs-frames', async (req, res) => {
     const html = `
       <html><body style="margin:0;background:transparent;">
       <div id="anim" style="width:512px;height:512px;"></div>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.13.0/lottie.min.js"></script>
       <script>
         window.anim = lottie.loadAnimation({
           container: document.getElementById('anim'),
