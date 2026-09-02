@@ -64,7 +64,20 @@ app.post('/render/tgs', async (req, res) => {
     }
 
     await browser.close();
-    res.json({ frames, width: 512, height: 512 });
+
+    // Safety check: if rendering failed to actually vary frame-to-frame,
+    // don't ship a fake "animation" — collapse to a single accurate costume.
+    let finalFrames = frames;
+    if (frames.length > 1) {
+      const first = frames[0];
+      const last = frames[frames.length - 1];
+      const middle = frames[Math.floor(frames.length / 2)];
+      if (first === last && last === middle) {
+        finalFrames = [frames[frames.length - 1]]; // use the last frame as the single costume
+      }
+    }
+
+    res.json({ frames: finalFrames, width: 512, height: 512 });
   } catch (err) {
     if (browser) await browser.close();
     res.status(500).json({ error: err.message });
