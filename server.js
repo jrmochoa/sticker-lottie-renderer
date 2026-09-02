@@ -102,13 +102,20 @@ app.post('/debug/tgs-frames', async (req, res) => {
 
     await page.evaluate((frame) => window.anim.goToAndStop(frame, true), lottieData.op);
     await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 200)));
-    const base64 = await page.evaluate(() => {
+
+    const pixelCheck = await page.evaluate(() => {
       const canvas = document.querySelector('#anim canvas');
-      return canvas ? canvas.toDataURL('image/png') : null;
+      const ctx = canvas.getContext('2d');
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let nonTransparentPixels = 0;
+      for (let i = 3; i < imgData.data.length; i += 4) {
+        if (imgData.data[i] > 0) nonTransparentPixels++;
+      }
+      return { totalPixels: canvas.width * canvas.height, nonTransparentPixels };
     });
 
     await browser.close();
-    res.json({ fullDataUrl: base64 });
+    res.json({ pixelCheck });
   } catch (err) {
     if (browser) await browser.close();
     res.status(500).json({ error: err.message });
