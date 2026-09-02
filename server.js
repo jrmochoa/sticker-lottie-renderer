@@ -94,68 +94,6 @@ app.post('/render/tgs', async (req, res) => {
   }
 });
 
-app.post('/debug/tgs-frames', async (req, res) => {
-  let browser;
-  try {
-    const tgsBytes = req.body;
-    const lottieJson = zlib.gunzipSync(tgsBytes).toString('utf8');
-    const lottieData = JSON.parse(lottieJson);
-
-    browser = await puppeteer.launch(LAUNCH_OPTS);
-    const page = await browser.newPage();
-    await page.setViewport({ width: 512, height: 512 });
-
-    const html = `
-      <html><body style="margin:0;background:transparent;">
-      <div id="anim" style="width:512px;height:512px;"></div>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
-      <script>
-        window.anim = lottie.loadAnimation({
-          container: document.getElementById('anim'),
-          renderer: 'canvas',
-          loop: false,
-          autoplay: false,
-          animationData: ${lottieJson}
-        });
-      </script>
-      </body></html>
-    `;
-    await page.setContent(html);
-    await page.waitForFunction(() => window.anim && window.anim.isLoaded);
-
-    async function getPixelSum(frame) {
-      await page.evaluate((f) => window.anim.goToAndStop(f, true), frame);
-      await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 150)));
-      return await page.evaluate(() => {
-        const canvas = document.querySelector('#anim canvas');
-        const ctx = canvas.getContext('2d');
-        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        let sum = 0;
-        for (let i = 0; i < imgData.data.length; i++) sum += imgData.data[i];
-        return sum;
-      });
-    }
-
-    const sumStart = await getPixelSum(lottieData.ip);
-    const sumMid = await getPixelSum(Math.floor((lottieData.ip + lottieData.op) / 2));
-    const sumEnd = await getPixelSum(lottieData.op);
-
-    const identical = (sumStart === sumMid && sumMid === sumEnd);
-
-    await browser.close();
-    res.json({
-      pixelSums: { start: sumStart, mid: sumMid, end: sumEnd },
-      framesIdentical: identical,
-      verdict: identical
-        ? "❌ FROZEN — safety fallback WILL trigger (single costume)"
-        : "✅ OK — real animation detected, full multi-frame will be used"
-    });
-  } catch (err) {
-    if (browser) await browser.close();
-    res.status(500).json({ error: err.message });
-  }
-});
-
 app.post('/render/webm', async (req, res) => {
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'webm-'));
   const inputPath = path.join(tmpDir, 'input.webm');
