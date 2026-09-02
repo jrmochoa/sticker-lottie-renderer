@@ -76,6 +76,12 @@ app.post('/debug/tgs-frames', async (req, res) => {
     const page = await browser.newPage();
     await page.setViewport({ width: 512, height: 512 });
 
+    const pageErrors = [];
+    page.on('pageerror', err => pageErrors.push('pageerror: ' + err.message));
+    page.on('console', msg => {
+      if (msg.type() === 'error') pageErrors.push('console.error: ' + msg.text());
+    });
+
     const html = `
       <html><body style="margin:0;background:transparent;">
       <div id="anim" style="width:512px;height:512px;"></div>
@@ -104,7 +110,6 @@ app.post('/debug/tgs-frames', async (req, res) => {
         return {
           actualCurrentFrame: window.anim.currentFrame,
           canvasExists: !!canvas,
-          canvasSize: canvas ? canvas.width + 'x' + canvas.height : null,
           dataUrlLength: canvas ? canvas.toDataURL('image/png').length : 0
         };
       });
@@ -112,7 +117,7 @@ app.post('/debug/tgs-frames', async (req, res) => {
     }
 
     await browser.close();
-    res.json({ report });
+    res.json({ report, pageErrors });
   } catch (err) {
     if (browser) await browser.close();
     res.status(500).json({ error: err.message });
