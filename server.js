@@ -100,22 +100,28 @@ app.post('/debug/tgs-frames', async (req, res) => {
     await page.setContent(html);
     await page.waitForFunction(() => window.anim && window.anim.isLoaded);
 
-    await page.evaluate((frame) => window.anim.goToAndStop(frame, true), lottieData.op);
-    await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 200)));
+    async function getPixelSum(frame) {
+      await page.evaluate((f) => window.anim.goToAndStop(f, true), frame);
+      await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 150)));
+      return await page.evaluate(() => {
+        const canvas = document.querySelector('#anim canvas');
+        const ctx = canvas.getContext('2d');
+        const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        let sum = 0;
+        for (let i = 0; i < imgData.data.length; i++) sum += imgData.data[i];
+        return sum;
+      });
+    }
 
-    const pixelCheck = await page.evaluate(() => {
-      const canvas = document.querySelector('#anim canvas');
-      const ctx = canvas.getContext('2d');
-      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      let nonTransparentPixels = 0;
-      for (let i = 3; i < imgData.data.length; i += 4) {
-        if (imgData.data[i] > 0) nonTransparentPixels++;
-      }
-      return { totalPixels: canvas.width * canvas.height, nonTransparentPixels };
-    });
+    const sumStart = await getPixelSum(lottieData.ip);
+    const sumMid = await getPixelSum(Math.floor((lottieData.ip + lottieData.op) / 2));
+    const sumEnd = await getPixelSum(lottieData.op);
 
     await browser.close();
-    res.json({ pixelCheck });
+    res.json({
+      pixelSums: { start: sumStart, mid: sumMid, end: sumEnd },
+      framesIdentical: (sumStart === sumMid && sumMid === sumEnd)
+    });
   } catch (err) {
     if (browser) await browser.close();
     res.status(500).json({ error: err.message });
