@@ -11,6 +11,18 @@ app.use(express.raw({ type: '*/*', limit: '10mb' }));
 
 const MAX_FRAMES = 12;
 
+const LAUNCH_OPTS = {
+  headless: 'new',
+  executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
+  args: [
+    '--no-sandbox',
+    '--disable-setuid-sandbox',
+    '--disable-background-timer-throttling',
+    '--disable-backgrounding-occluded-windows',
+    '--disable-renderer-backgrounding'
+  ]
+};
+
 app.post('/render/tgs', async (req, res) => {
   let browser;
   try {
@@ -18,10 +30,7 @@ app.post('/render/tgs', async (req, res) => {
     const lottieJson = zlib.gunzipSync(tgsBytes).toString('utf8');
     const lottieData = JSON.parse(lottieJson);
 
-    browser = await puppeteer.launch({
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    browser = await puppeteer.launch(LAUNCH_OPTS);
     const page = await browser.newPage();
     await page.setViewport({ width: 512, height: 512 });
 
@@ -69,10 +78,7 @@ app.post('/debug/tgs-frames', async (req, res) => {
     const lottieJson = zlib.gunzipSync(tgsBytes).toString('utf8');
     const lottieData = JSON.parse(lottieJson);
 
-    browser = await puppeteer.launch({
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
+    browser = await puppeteer.launch(LAUNCH_OPTS);
     const page = await browser.newPage();
     await page.setViewport({ width: 512, height: 512 });
 
