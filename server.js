@@ -23,6 +23,21 @@ const LAUNCH_OPTS = {
   ]
 };
 
+async function captureFrame(page, frameNum, previousDataUrl) {
+  await page.evaluate((f) => window.anim.goToAndStop(f, true), frameNum);
+
+  let dataUrl = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    await page.evaluate((ms) => new Promise(resolve => setTimeout(resolve, ms)), 100);
+    dataUrl = await page.evaluate(() => {
+      const canvas = document.querySelector('#anim canvas');
+      return canvas ? canvas.toDataURL('image/png') : null;
+    });
+    if (dataUrl !== previousDataUrl) break;
+  }
+  return dataUrl;
+}
+
 app.post('/render/tgs', async (req, res) => {
   let browser;
   try {
@@ -37,7 +52,7 @@ app.post('/render/tgs', async (req, res) => {
     const html = `
       <html><body style="margin:0;background:transparent;">
       <div id="anim" style="width:512px;height:512px;"></div>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.13.0/lottie.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
       <script>
         window.anim = lottie.loadAnimation({
           container: document.getElementById('anim'),
@@ -53,27 +68,26 @@ app.post('/render/tgs', async (req, res) => {
     await page.waitForFunction(() => window.anim && window.anim.isLoaded);
 
     const frames = [];
+    let previousDataUrl = null;
     for (let f = lottieData.ip; f <= lottieData.op; f += 1) {
-      await page.evaluate((frame) => window.anim.goToAndStop(frame, true), f);
-      await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 50)));
-      const base64 = await page.evaluate(() => {
-        const canvas = document.querySelector('#anim canvas');
-        return canvas ? canvas.toDataURL('image/png').split(',')[1] : null;
-      });
-      if (base64) frames.push(base64);
+      const dataUrl = await captureFrame(page, f, previousDataUrl);
+      if (dataUrl) {
+        frames.push(dataUrl.split(',')[1]);
+        previousDataUrl = dataUrl;
+      }
     }
 
     await browser.close();
 
-    // Safety check: if rendering failed to actually vary frame-to-frame,
-    // don't ship a fake "animation" — collapse to a single accurate costume.
+    // Safety check: if rendering still failed to vary at all (start/mid/end identical),
+    // collapse to a single accurate costume instead of shipping a fake "animation".
     let finalFrames = frames;
     if (frames.length > 1) {
       const first = frames[0];
       const last = frames[frames.length - 1];
       const middle = frames[Math.floor(frames.length / 2)];
       if (first === last && last === middle) {
-        finalFrames = [frames[frames.length - 1]]; // use the last frame as the single costume
+        finalFrames = [frames[frames.length - 1]];
       }
     }
 
@@ -98,7 +112,7 @@ app.post('/debug/tgs-frames', async (req, res) => {
     const html = `
       <html><body style="margin:0;background:transparent;">
       <div id="anim" style="width:512px;height:512px;"></div>
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.13.0/lottie.min.js"></script>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
       <script>
         window.anim = lottie.loadAnimation({
           container: document.getElementById('anim'),
@@ -130,10 +144,15 @@ app.post('/debug/tgs-frames', async (req, res) => {
     const sumMid = await getPixelSum(Math.floor((lottieData.ip + lottieData.op) / 2));
     const sumEnd = await getPixelSum(lottieData.op);
 
+    const identical = (sumStart === sumMid && sumMid === sumEnd);
+
     await browser.close();
     res.json({
       pixelSums: { start: sumStart, mid: sumMid, end: sumEnd },
-      framesIdentical: (sumStart === sumMid && sumMid === sumEnd)
+      framesIdentical: identical,
+      verdict: identical
+        ? "❌ FROZEN — safety fallback WILL trigger (single costume)"
+        : "✅ OK — real animation detected, full multi-frame will be used"
     });
   } catch (err) {
     if (browser) await browser.close();
