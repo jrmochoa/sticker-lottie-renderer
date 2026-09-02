@@ -106,11 +106,15 @@ app.post('/debug/tgs-frames', async (req, res) => {
       await page.evaluate((frame) => window.anim.goToAndStop(frame, true), f);
       await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 100)));
       const info = await page.evaluate(() => {
-        const canvas = document.querySelector('#anim canvas');
+        const canvases = document.querySelectorAll('#anim canvas');
         return {
           actualCurrentFrame: window.anim.currentFrame,
-          canvasExists: !!canvas,
-          dataUrlLength: canvas ? canvas.toDataURL('image/png').length : 0
+          canvasCount: canvases.length,
+          canvasDetails: Array.from(canvases).map(c => ({
+            width: c.width,
+            height: c.height,
+            dataUrlLength: c.toDataURL('image/png').length
+          }))
         };
       });
       report.push({ requestedFrame: f, ...info });
