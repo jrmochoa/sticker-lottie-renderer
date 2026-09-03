@@ -21,6 +21,12 @@ const LAUNCH_OPTS = {
   ]
 };
 
+const DISPLAY_W = 480;
+const DISPLAY_H = 360;
+const SUPERSAMPLE = 2;
+const CAPTURE_W = DISPLAY_W * SUPERSAMPLE;
+const CAPTURE_H = DISPLAY_H * SUPERSAMPLE;
+
 app.post('/render/tgs', async (req, res) => {
   let browser;
   try {
@@ -30,16 +36,16 @@ app.post('/render/tgs', async (req, res) => {
 
     browser = await puppeteer.launch(LAUNCH_OPTS);
     const page = await browser.newPage();
-    await page.setViewport({ width: 512, height: 512 });
+    await page.setViewport({ width: CAPTURE_W, height: CAPTURE_H });
 
     const html = `
       <html><body style="margin:0;background:transparent;">
-      <div id="anim" style="width:512px;height:512px;"></div>
+      <div id="anim" style="width:${CAPTURE_W}px;height:${CAPTURE_H}px;"></div>
       <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
       <script>
         window.anim = lottie.loadAnimation({
           container: document.getElementById('anim'),
-          renderer: 'svg',
+          renderer: 'canvas',
           loop: false,
           autoplay: false,
           animationData: ${lottieJson}
@@ -52,13 +58,13 @@ app.post('/render/tgs', async (req, res) => {
 
     const frames = [];
     for (let f = lottieData.ip; f <= lottieData.op; f += 1) {
-      const svg = await page.evaluate((frame) => {
+      const dataUrl = await page.evaluate((frame) => {
         window.anim.currentFrame = frame;
         window.anim.renderer.renderFrame(frame);
-        const svgEl = document.querySelector('#anim svg');
-        return svgEl ? svgEl.outerHTML : null;
+        const canvas = document.querySelector('#anim canvas');
+        return canvas ? canvas.toDataURL('image/png') : null;
       }, f);
-      if (svg) frames.push(svg);
+      if (dataUrl) frames.push(dataUrl.split(',')[1]);
     }
 
     await browser.close();
@@ -74,7 +80,7 @@ app.post('/render/tgs', async (req, res) => {
       }
     }
 
-    res.json({ frames: finalFrames, width: lottieData.w, height: lottieData.h, fr: lottieData.fr });
+    res.json({ frames: finalFrames, width: DISPLAY_W, height: DISPLAY_H, fr: lottieData.fr });
   } catch (err) {
     if (browser) await browser.close();
     res.status(500).json({ error: err.message });
