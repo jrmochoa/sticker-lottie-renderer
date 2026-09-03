@@ -21,15 +21,6 @@ const LAUNCH_OPTS = {
   ]
 };
 
-async function captureFrame(page, frameNum) {
-  return await page.evaluate((f) => {
-    window.anim.currentFrame = f;
-    window.anim.renderer.renderFrame(f);
-    const canvas = document.querySelector('#anim canvas');
-    return canvas ? canvas.toDataURL('image/png') : null;
-  }, frameNum);
-}
-
 app.post('/render/tgs', async (req, res) => {
   let browser;
   try {
@@ -48,7 +39,7 @@ app.post('/render/tgs', async (req, res) => {
       <script>
         window.anim = lottie.loadAnimation({
           container: document.getElementById('anim'),
-          renderer: 'canvas',
+          renderer: 'svg',
           loop: false,
           autoplay: false,
           animationData: ${lottieJson}
@@ -61,12 +52,18 @@ app.post('/render/tgs', async (req, res) => {
 
     const frames = [];
     for (let f = lottieData.ip; f <= lottieData.op; f += 1) {
-      const dataUrl = await captureFrame(page, f);
-      if (dataUrl) frames.push(dataUrl.split(',')[1]);
+      const svg = await page.evaluate((frame) => {
+        window.anim.currentFrame = frame;
+        window.anim.renderer.renderFrame(frame);
+        const svgEl = document.querySelector('#anim svg');
+        return svgEl ? svgEl.outerHTML : null;
+      }, f);
+      if (svg) frames.push(svg);
     }
 
     await browser.close();
 
+    // Safety net: if frames genuinely never varied, collapse to one accurate frame
     let finalFrames = frames;
     if (frames.length > 1) {
       const first = frames[0];
@@ -77,7 +74,7 @@ app.post('/render/tgs', async (req, res) => {
       }
     }
 
-    res.json({ frames: finalFrames, width: 512, height: 512, fr: lottieData.fr });
+    res.json({ frames: finalFrames, width: lottieData.w, height: lottieData.h, fr: lottieData.fr });
   } catch (err) {
     if (browser) await browser.close();
     res.status(500).json({ error: err.message });
