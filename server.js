@@ -45,7 +45,7 @@ app.post('/render/tgs', async (req, res) => {
       <script>
         window.anim = lottie.loadAnimation({
           container: document.getElementById('anim'),
-          renderer: 'canvas',
+          renderer: 'svg',
           loop: false,
           autoplay: false,
           animationData: ${lottieJson}
@@ -56,31 +56,18 @@ app.post('/render/tgs', async (req, res) => {
     await page.setContent(html);
     await page.waitForFunction(() => window.anim && window.anim.isLoaded);
 
+    const animContainer = await page.$('#anim');
+
     const frames = [];
     for (let f = lottieData.ip; f <= lottieData.op; f += 1) {
-      const dataUrl = await page.evaluate((frame) => {
-        window.anim.currentFrame = frame;
-        window.anim.renderer.renderFrame(frame);
-        const canvas = document.querySelector('#anim canvas');
-        return canvas ? canvas.toDataURL('image/png') : null;
-      }, f);
-      if (dataUrl) frames.push(dataUrl.split(',')[1]);
+      await page.evaluate((frame) => window.anim.goToAndStop(frame, true), f);
+      const buf = await animContainer.screenshot({ type: 'png' });
+      frames.push(buf.toString('base64'));
     }
 
     await browser.close();
 
-    // Safety net: if frames genuinely never varied, collapse to one accurate frame
-    let finalFrames = frames;
-    if (frames.length > 1) {
-      const first = frames[0];
-      const last = frames[frames.length - 1];
-      const middle = frames[Math.floor(frames.length / 2)];
-      if (first === last && last === middle) {
-        finalFrames = [frames[frames.length - 1]];
-      }
-    }
-
-    res.json({ frames: finalFrames, width: DISPLAY_W, height: DISPLAY_H, fr: lottieData.fr });
+    res.json({ frames, width: DISPLAY_W, height: DISPLAY_H, fr: lottieData.fr });
   } catch (err) {
     if (browser) await browser.close();
     res.status(500).json({ error: err.message });
