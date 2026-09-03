@@ -61,7 +61,7 @@ app.post('/render/tgs', async (req, res) => {
     const frames = [];
     for (let f = lottieData.ip; f <= lottieData.op; f += 1) {
       await page.evaluate((frame) => window.anim.goToAndStop(frame, true), f);
-      const buf = await animContainer.screenshot({ type: 'png' });
+      const buf = await animContainer.screenshot({ type: 'png', omitBackground: true });
       frames.push(buf.toString('base64'));
     }
 
